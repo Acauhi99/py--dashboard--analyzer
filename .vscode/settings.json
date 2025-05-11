@@ -1,0 +1,16 @@
+{
+  "python.terminal.activateEnvironment": true,
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/*.pyc": true
+  },
+  "terminal.integrated.env.linux": {
+    "PYTHONDONTWRITEBYTECODE": "1"
+  },
+  "terminal.integrated.env.osx": {
+    "PYTHONDONTWRITEBYTECODE": "1"
+  },
+  "terminal.integrated.env.windows": {
+    "PYTHONDONTWRITEBYTECODE": "1"
+  }
+}
