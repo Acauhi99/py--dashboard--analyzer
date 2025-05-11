@@ -30,22 +30,10 @@ Os dados utilizados neste projeto contêm informações sobre os custos variáve
 
 ## Instalação
 
-1. Clone o repositório:
-
-   ```bash
-   git clone https://github.com/seu-usuario/atividade-avaliativa-dashboard-unit-variable-cost.git
-   cd atividade-avaliativa-dashboard-unit-variable-cost
-   ```
-
-2. Instale as dependências com Poetry:
+1. Instale as dependências com Poetry:
 
    ```bash
    poetry install
-   ```
-
-3. Ative o ambiente virtual:
-   ```bash
-   poetry shell
    ```
 
 ## Execução
