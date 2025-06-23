@@ -1,0 +1,307 @@
+#######################################################################
+# 1. SELEÇÃO DO DATASET
+#######################################################################
+
+DATASET: Custos variáveis unitários das usinas térmicas do Sistema Interligado Nacional (SIN)
+
+VARIÁVEIS:
+  * data_inicio/data_fim
+  * ano/mes
+  * subsistema
+  * usina
+  * custo_variavel_unitario
+
+RELEVÂNCIA: 
+  Permite análise de custos energéticos por região, período e usina específica
+
+CÓDIGO RELACIONADO:
+[main.py]
+-----------------------------------------
+data_path = os.path.join(project_root, "data", "custo_usinas_termicas.csv")
+raw_data = load_data(data_path)
+
+[data_processing.py]
+-----------------------------------------
+def load_data(filepath):
+    # Carrega o arquivo CSV com dados de custos das usinas térmicas para análise posterior
+    df = pd.read_csv(filepath)
+    return df
+
+
+#######################################################################
+# 2. TRATAMENTO DOS DADOS
+#######################################################################
+
+ETAPAS DE PROCESSAMENTO:
+  * Conversão de datas para datetime
+  * Tratamento de valores nulos
+  * Remoção de duplicatas
+  * Criação de novas colunas derivadas
+  * Categorização de dados
+
+CÓDIGO RELACIONADO:
+[data_processing.py]
+-----------------------------------------
+def process_data(df):
+    # Transforma os dados brutos: converte datas, trata valores nulos, cria categorias de custo e colunas derivadas para análise
+    df['data_inicio'] = pd.to_datetime(df['data_inicio'])
+    df['data_fim'] = pd.to_datetime(df['data_fim'])
+    
+    df['semana_do_ano'] = df['data_inicio'].dt.isocalendar().week
+    
+    df['custo_variavel_unitario'] = df['custo_variavel_unitario'].fillna(0)
+    
+    df = df.drop_duplicates()
+    
+    df['categoria_custo'] = pd.cut(
+        df['custo_variavel_unitario'],
+        bins=[0, 100, 300, 600, float('inf')],
+        labels=['Baixo', 'Médio', 'Alto', 'Muito Alto']
+    )
+    
+    df['ano_mes'] = df['data_inicio'].dt.strftime('%Y-%m')
+    
+    df = df.sort_values('data_inicio')
+    
+    return df
+
+
+#######################################################################
+# 3. VISUALIZAÇÕES
+#######################################################################
+
+## a) Histograma (distribuição de custos)
+[visualization.py]
+-----------------------------------------
+def create_cost_histogram(df, subsystem=None):
+    # Gera um histograma da distribuição de custos variáveis unitários
+    filtered_df = df if subsystem is None else df[df['subsistema'] == subsystem]
+    
+    fig = px.histogram(
+        filtered_df, 
+        x='custo_variavel_unitario',
+        nbins=20,
+        title=f'Distribuição de Custos Variáveis Unitários {subsystem or ""}',
+        labels={'custo_variavel_unitario': 'Custo Variável Unitário (R$)'},
+        color_discrete_sequence=[COLOR_SCALE[5]],
+        template=TEMPLATE,
+        opacity=0.8
+    )
+
+## b) Gráfico de linha (série temporal)
+[visualization.py]
+-----------------------------------------
+def create_time_series(df, plant=None):
+    # Cria um gráfico de linha que mostra a evolução dos custos ao longo do tempo
+    if plant:
+        filtered_df = df[df['usina'] == plant]
+        title = f'Evolução do Custo Variável Unitário - {plant}'
+        
+        fig = px.line(
+            filtered_df, 
+            x='data_inicio', 
+            y='custo_variavel_unitario',
+            title=title,
+            labels={
+                'data_inicio': 'Data',
+                'custo_variavel_unitario': 'Custo Variável Unitário (R$)'
+            },
+            template=TEMPLATE,
+            line_shape='spline',
+            markers=True,
+            color_discrete_sequence=[COLOR_SCALE[3]]
+        )
+
+## c) Boxplot (distribuição estatística)
+[visualization.py]
+-----------------------------------------
+def create_cost_boxplot(df, group_by='subsistema'):
+    # Produz boxplots que revelam a distribuição estatística dos custos
+    fig = px.box(
+        df, 
+        x=group_by, 
+        y='custo_variavel_unitario',
+        title=f'Distribuição de Custos por {group_by}',
+        labels={
+            group_by: group_by.capitalize(),
+            'custo_variavel_unitario': 'Custo Variável Unitário (R$)'
+        },
+        color=group_by,
+        color_discrete_sequence=DISCRETE_COLORS,
+        template=TEMPLATE,
+        notched=True
+    )
+
+## d) Gráfico de barras (ranking de usinas)
+[visualization.py]
+-----------------------------------------
+def create_cost_by_plant_bar(df, subsystem=None, top_n=10):
+    # Gera um gráfico de barras que identifica as usinas com maiores custos médios
+    filtered_df = df if subsystem is None else df[df['subsistema'] == subsystem]
+    
+    plant_avg = filtered_df.groupby('usina')['custo_variavel_unitario'].mean().reset_index()
+    
+    plant_avg = plant_avg.sort_values('custo_variavel_unitario', ascending=False).head(top_n)
+    
+    fig = px.bar(
+        plant_avg, 
+        x='usina', 
+        y='custo_variavel_unitario',
+        title=f'Top {top_n} Usinas com Maior Custo Médio {subsystem or ""}',
+        labels={
+            'usina': 'Usina',
+            'custo_variavel_unitario': 'Custo Médio Variável Unitário (R$)'
+        },
+        color='custo_variavel_unitario',
+        color_continuous_scale=COLOR_SCALE,
+        template=TEMPLATE,
+        text_auto='.0f'
+    )
+
+## e) Estatísticas descritivas (média, mediana, etc.)
+[data_processing.py]
+-----------------------------------------
+def get_summary_stats(df):
+    # Calcula estatísticas descritivas como média, mediana e variância
+    numeric_cols = ['custo_variavel_unitario']
+    stats = df[numeric_cols].describe()
+    
+    stats.loc['median'] = df[numeric_cols].median()
+    stats.loc['variance'] = df[numeric_cols].var()
+    
+    return stats
+
+[dashboard.py]
+-----------------------------------------
+@app.callback(
+    Output('summary-stats', 'children'),
+    [Input('subsystem-filter', 'value'),
+     Input('month-filter', 'value')]
+)
+def update_stats(subsystem, month):
+    # Callback que recalcula as estatísticas descritivas baseadas nos filtros aplicados
+    filtered_data = data
+    
+    if subsystem:
+        filtered_data = filtered_data[filtered_data['subsistema'] == subsystem]
+        
+    if month:
+        filtered_data = filtered_data[filtered_data['ano_mes'] == month]
+        
+    stats = get_summary_stats(filtered_data)
+    
+    table = html.Table([
+        html.Thead(html.Tr([
+            html.Th("Estatística", className="text-primary"),
+            html.Th("Valor", className="text-primary")
+        ])),
+        html.Tbody([
+            html.Tr([html.Td("Média", className="fw-bold"), html.Td(f"{stats.loc['mean', 'custo_variavel_unitario']:.2f}")]),
+            html.Tr([html.Td("Mediana", className="fw-bold"), html.Td(f"{stats.loc['median', 'custo_variavel_unitario']:.2f}")]),
+            html.Tr([html.Td("Mínimo", className="fw-bold"), html.Td(f"{stats.loc['min', 'custo_variavel_unitario']:.2f}")]),
+            html.Tr([html.Td("Máximo", className="fw-bold"), html.Td(f"{stats.loc['max', 'custo_variavel_unitario']:.2f}")]),
+            html.Tr([html.Td("Desvio Padrão", className="fw-bold"), html.Td(f"{stats.loc['std', 'custo_variavel_unitario']:.2f}")])
+        ])
+    ])
+
+
+#######################################################################
+# 4. INTERATIVIDADE
+#######################################################################
+
+## a) Dropdowns para seleção de subsistema, período e usina
+[dashboard.py]
+-----------------------------------------
+html.Label("Subsistema:", className="fw-bold mt-2"),
+dcc.Dropdown(
+    id='subsystem-filter',
+    options=[{'label': sub, 'value': sub} for sub in subsystems],
+    value=None,
+    placeholder="Todos os Subsistemas",
+    className="mb-3"
+),
+
+html.Label("Período:", className="fw-bold mt-2"),
+dcc.Dropdown(
+    id='month-filter',
+    options=[{'label': month, 'value': month} for month in months],
+    value=months[-1] if months else None,
+    placeholder="Escolha um mês",
+    className="mb-3"
+),
+
+html.Label("Usina (Série Temporal):", className="fw-bold mt-2"),
+dcc.Dropdown(
+    id='plant-filter',
+    options=[{'label': plant, 'value': plant} for plant in plants],
+    value=None,
+    placeholder="Escolha uma usina",
+    className="mb-3"
+),
+
+## b) Radio buttons para agrupamento do boxplot
+[dashboard.py]
+-----------------------------------------
+html.Label("Agrupar Boxplot por:", className="fw-bold mt-2"),
+dbc.RadioItems(
+    id='boxplot-group',
+    options=[
+        {'label': 'Subsistema', 'value': 'subsistema'},
+        {'label': 'Categoria de Custo', 'value': 'categoria_custo'}
+    ],
+    value='subsistema',
+    inline=True,
+    className="mb-3"
+),
+
+## c) Slider para ajustar número de usinas no ranking
+[dashboard.py]
+-----------------------------------------
+html.Label(f"Top Usinas:", className="fw-bold mt-2"),
+dcc.Slider(
+    id='top-n-slider',
+    min=5,
+    max=20,
+    step=5,
+    value=10,
+    marks={i: {'label': str(i), 'style': {'font-weight': 'bold'}} for i in range(5, 25, 5)},
+    className="mb-3"
+),
+
+## d) Tabs para alternar entre diferentes visualizações
+[dashboard.py]
+-----------------------------------------
+dbc.Tabs([
+    dbc.Tab([
+        dcc.Graph(id='histogram-plot', style={'height': '65vh'})
+    ], label="Distribuição", tab_id="tab-1", tab_style={"margin": "0 0.5rem"}),
+    
+    dbc.Tab([
+        dcc.Graph(id='time-series-plot', style={'height': '65vh'})
+    ], label="Evolução Temporal", tab_id="tab-2", tab_style={"margin": "0 0.5rem"}),
+    
+    dbc.Tab([
+        dcc.Graph(id='boxplot', style={'height': '65vh'})
+    ], label="Boxplot", tab_id="tab-3", tab_style={"margin": "0 0.5rem"}),
+    
+    dbc.Tab([
+        dcc.Graph(id='barplot', style={'height': '65vh'})
+    ], label="Top Usinas", tab_id="tab-4", tab_style={"margin": "0 0.5rem"})
+], id="tabs", active_tab="tab-1")
+
+## e) Atualização dinâmica dos gráficos via callbacks
+[dashboard.py]
+-----------------------------------------
+@app.callback(
+    Output('histogram-plot', 'figure'),
+    [Input('subsystem-filter', 'value'),
+     Input('month-filter', 'value')]
+)
+def update_histogram(subsystem, month):
+    # Callback que atualiza o histograma dinamicamente conforme os filtros selecionados
+    filtered_data = data
+    
+    if month:
+        filtered_data = filtered_data[filtered_data['ano_mes'] == month]
+        
+    return create_cost_histogram(filtered_data, subsystem)
